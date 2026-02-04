@@ -1,0 +1,9 @@
+﻿{
+  "mode": "stub",
+  "tasks": ["circle_packing"],
+  "trainers": ["PrioritySearch"],
+  "llm": {"provider": "stub", "seed": 123},
+  "timeouts": {"task_seconds": 60, "eval_seconds": 20},
+  "threads": 1,
+  "runs_root": "runs"
+}
