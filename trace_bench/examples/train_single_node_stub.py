@@ -20,11 +20,11 @@ class SingleNodeAgent:
         self.guess = trace.node(0.0, trainable=True)
 
     def __call__(self, _input):
-        return self.output()
+        return self.output(self.guess)
 
     @trace.bundle(trainable=True)
-    def output(self):
-        return self.guess
+    def output(self, guess):
+        return guess
 
 
 def build_trace_problem(**override_eval_kwargs):

@@ -15,16 +15,15 @@ class ExactMatchGuide(Guide):
 class GreetingAgent:
     def __init__(self):
         self.greeting = trace.node("Hello", trainable=True)
-        self.language = trace.node("en", trainable=True)
 
     def __call__(self, user_query: str):
         name = user_query.split()[-1].strip("!.?")
-        return self.compose(name)
+        return self.compose(self.greeting, name)
 
     @trace.bundle(trainable=True)
-    def compose(self, name: str):
-        greeting = self.greeting.data
-        return f"{greeting}, {name}!"
+    def compose(self, greeting, name: str):
+        greeting_value = getattr(greeting, "data", greeting)
+        return f"{greeting_value}, {name}!"
 
 
 def build_trace_problem(**override_eval_kwargs):
