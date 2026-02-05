@@ -1,6 +1,6 @@
-﻿"""Trace-Bench harness package (M0 skeleton)."""
+﻿"""Trace-Bench runner package."""
 
 from .config import RunConfig, load_config
-from .runner import Runner
+from .runner import BenchRunner
 
-__all__ = ["RunConfig", "load_config", "Runner"]
+__all__ = ["RunConfig", "load_config", "BenchRunner"]

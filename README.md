@@ -5,6 +5,28 @@ Currently, we are adding problems/domains one folder at a time.
 
 The instructions to run each task are located inside the task folder.
 
+## Quick Start (Runner/CLI)
+
+```bash
+# List tasks (LLM4AD + example stubs)
+trace-bench list-tasks --root LLM4AD/benchmark_tasks
+
+# Validate a config
+trace-bench validate --config configs/smoke.yaml
+
+# Run a smoke benchmark
+trace-bench run --config configs/smoke.yaml
+
+# Launch UI (stub)
+trace-bench ui --runs-dir runs
+```
+
+Expected run artifacts:
+- `runs/<run_id>/config.snapshot.yaml`
+- `runs/<run_id>/env.json`
+- `runs/<run_id>/results.csv`
+- `runs/<run_id>/events.jsonl`
+
 ## Problem Sets
 
 ### General Problem Sets

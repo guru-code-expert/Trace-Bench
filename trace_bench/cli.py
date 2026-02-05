@@ -1,65 +1,81 @@
 ﻿from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
+import sys
 
 from trace_bench.config import load_config
-from trace_bench.runner import Runner
-from trace_bench.tasks import list_task_keys, load_trace_problem
+from trace_bench.registry import discover_tasks, load_task_bundle
+from trace_bench.runner import BenchRunner
+from trace_bench.ui import launch_ui
 
 
-def cmd_run(config_path: str) -> int:
-    config = load_config(config_path)
-    runner = Runner(config)
-    runner.start()
-    runner.run_matrix()
-    runner.stop()
+def cmd_list_tasks(root: str) -> int:
+    specs = discover_tasks(root)
+    for spec in specs:
+        print(spec.key)
     return 0
 
 
-def cmd_list_tasks(tasks_dir: str) -> int:
-    tasks = list_task_keys(tasks_dir)
-    for key in tasks:
-        print(key)
-    return 0
-
-
-def cmd_validate(config_path: str) -> int:
-    config = load_config(config_path)
-    tasks_dir = Path("LLM4AD") / "benchmark_tasks"
+def cmd_validate(config_path: str, root: str) -> int:
+    cfg = load_config(config_path)
+    tasks_root = Path(root)
     errors = 0
-    for task_key in config.tasks:
+    for task in cfg.tasks:
+        key = task.get("key") if isinstance(task, dict) else task
         try:
-            load_trace_problem(task_key, tasks_dir, eval_kwargs=config.timeouts)
-            print(f"[OK] {task_key}")
+            load_task_bundle(key, tasks_root, eval_kwargs=cfg.eval_kwargs)
+            print(f"[OK] {key}")
         except Exception as exc:
             errors += 1
-            print(f"[FAIL] {task_key}: {exc}")
+            print(f"[FAIL] {key}: {exc}")
     return 1 if errors else 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="trace_bench")
+def cmd_run(config_path: str, root: str) -> int:
+    cfg = load_config(config_path)
+    runner = BenchRunner(cfg, tasks_root=root)
+    runner.run()
+    return 0
+
+
+def cmd_ui(runs_dir: str) -> int:
+    return launch_ui(runs_dir)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="trace-bench")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    run_p = sub.add_parser("run", help="Run a benchmark matrix")
-    run_p.add_argument("--config", required=True, help="Path to config YAML")
-
-    list_p = sub.add_parser("list-tasks", help="List available tasks")
-    list_p.add_argument("--tasks", required=True, help="Tasks directory")
+    list_p = sub.add_parser("list-tasks", help="List discoverable tasks")
+    list_p.add_argument("--root", default="LLM4AD/benchmark_tasks")
 
     val_p = sub.add_parser("validate", help="Validate tasks in config")
-    val_p.add_argument("--config", required=True, help="Path to config YAML")
+    val_p.add_argument("--config", required=True)
+    val_p.add_argument("--root", default="LLM4AD/benchmark_tasks")
 
+    run_p = sub.add_parser("run", help="Run a benchmark config")
+    run_p.add_argument("--config", required=True)
+    run_p.add_argument("--root", default="LLM4AD/benchmark_tasks")
+
+    ui_p = sub.add_parser("ui", help="Launch Gradio UI (stub)")
+    ui_p.add_argument("--runs-dir", default="runs")
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.cmd == "run":
-        return cmd_run(args.config)
     if args.cmd == "list-tasks":
-        return cmd_list_tasks(args.tasks)
+        return cmd_list_tasks(args.root)
     if args.cmd == "validate":
-        return cmd_validate(args.config)
+        return cmd_validate(args.config, args.root)
+    if args.cmd == "run":
+        return cmd_run(args.config, args.root)
+    if args.cmd == "ui":
+        return cmd_ui(args.runs_dir)
     return 1
 
 

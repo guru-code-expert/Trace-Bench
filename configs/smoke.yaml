@@ -1,9 +1,17 @@
-﻿{
-  "mode": "stub",
-  "tasks": ["circle_packing"],
-  "trainers": ["PrioritySearch"],
-  "llm": {"provider": "stub", "seed": 123},
-  "timeouts": {"task_seconds": 60, "eval_seconds": 20},
-  "threads": 1,
-  "runs_root": "runs"
-}
+﻿run_id:
+runs_dir: runs
+mode: stub
+seed: 123
+
+tasks:
+  - circle_packing
+
+trainers:
+  - PrioritySearch
+
+eval_kwargs:
+  timeout_seconds: 10
+
+trainer_kwargs:
+  num_steps: 1
+  num_batches: 1

@@ -1,93 +1,174 @@
 ﻿from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 import os
+import random
 
-from trace_bench.adapters.llm import llm_from_config, LLMAdapter
 from trace_bench.artifacts import (
     RunArtifacts,
-    create_run_dir,
-    write_config,
-    write_metadata,
-    write_env,
-    append_metrics,
-    append_summary,
-    write_text,
+    append_event,
+    append_results_csv,
+    init_run_dir,
+    write_config_snapshot,
+    write_env_json,
+    write_summary,
 )
 from trace_bench.config import RunConfig
-from trace_bench.tasks import load_trace_problem
-from trace_bench.trainers.opto_algos import get_trainer
+from trace_bench.registry import discover_tasks, load_task_bundle
 
 
-class Runner:
-    def __init__(self, config: RunConfig, llm: Optional[LLMAdapter] = None) -> None:
+try:
+    from opto.trace.nodes import ParameterNode
+except Exception:  # pragma: no cover - only when opto is not available
+    ParameterNode = object  # type: ignore
+
+
+@dataclass
+class RunSummary:
+    run_id: str
+    results: List[Dict[str, Any]]
+
+
+def _normalize_tasks(tasks: List[Any], default_eval: Dict[str, Any]) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    for item in tasks:
+        if isinstance(item, str):
+            normalized.append({"key": item, "eval_kwargs": dict(default_eval)})
+        elif isinstance(item, dict):
+            key = item.get("key") or item.get("task")
+            if not key:
+                raise ValueError(f"Task entry missing key: {item}")
+            eval_kwargs = dict(default_eval)
+            eval_kwargs.update(item.get("eval_kwargs", {}))
+            normalized.append({"key": key, "eval_kwargs": eval_kwargs})
+        else:
+            raise ValueError(f"Unsupported task entry: {item}")
+    return normalized
+
+
+def _extract_response(model: Any, input_value: Any) -> Any:
+    if isinstance(model, ParameterNode):
+        return getattr(model, "data", model)
+    if callable(model):
+        output = model(input_value)
+        return getattr(output, "data", output)
+    return getattr(model, "data", model)
+
+
+def _evaluate_bundle(bundle: Dict[str, Any]) -> Dict[str, Any]:
+    dataset = bundle["train_dataset"]
+    guide = bundle["guide"]
+    inputs = dataset.get("inputs") or []
+    infos = dataset.get("infos") or []
+    if not inputs or not infos:
+        return {"score": None, "feedback": "empty_dataset"}
+    task_input = inputs[0]
+    task_info = infos[0]
+    response = _extract_response(bundle["param"], task_input)
+    try:
+        score, feedback = guide(task_input, response, task_info)
+    except Exception as exc:
+        return {"score": None, "feedback": f"eval_error: {exc}"}
+    return {"score": score, "feedback": feedback}
+
+
+def _resolve_algorithm(name: str):
+    if name == "PrioritySearch":
+        return "PrioritySearch"
+    if name == "GEPA-Base":
+        from opto.features.gepa.gepa_algorithms import GEPAAlgorithmBase
+        return GEPAAlgorithmBase
+    if name == "GEPA-UCB":
+        from opto.features.gepa.gepa_algorithms import GEPAUCBSearch
+        return GEPAUCBSearch
+    if name == "GEPA-Beam":
+        from opto.features.gepa.gepa_algorithms import GEPABeamPareto
+        return GEPABeamPareto
+    return name
+
+
+def _default_trainer_kwargs(algo_name: str) -> Dict[str, Any]:
+    if algo_name == "PrioritySearch":
+        return dict(num_epochs=1, num_steps=1, num_batches=1, num_candidates=2, num_proposals=2)
+    return dict(num_iters=1, num_search_iterations=1, train_batch_size=2, merge_every=2, pareto_subset_size=2)
+
+
+def _train_bundle(bundle: Dict[str, Any], algo_name: str, trainer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    from opto import trainer as opto_trainer
+
+    algo = _resolve_algorithm(algo_name)
+    kwargs = _default_trainer_kwargs(algo_name)
+    kwargs.update(trainer_kwargs)
+
+    try:
+        opto_trainer.train(
+            model=bundle["param"],
+            train_dataset=bundle["train_dataset"],
+            algorithm=algo,
+            guide=bundle["guide"],
+            optimizer_kwargs=bundle.get("optimizer_kwargs", {}),
+            **kwargs,
+        )
+        return {"status": "trained"}
+    except Exception as exc:
+        return {"status": "train_error", "error": str(exc)}
+
+
+class BenchRunner:
+    def __init__(self, config: RunConfig, tasks_root: str | Path = "LLM4AD/benchmark_tasks"):
         self.config = config
+        self.tasks_root = Path(tasks_root)
         self.config.ensure_run_id()
-        self.llm = llm or llm_from_config(self.config.mode, self.config.llm)
+        random.seed(self.config.seed)
         self.artifacts: Optional[RunArtifacts] = None
 
-    def start(self) -> None:
-        self.artifacts = create_run_dir(self.config.runs_root, self.config.run_id)
-        self.artifacts.ensure()
-        write_config(self.artifacts.run_dir / "config.yaml", self.config.to_dict())
-        write_metadata(
-            self.artifacts.run_dir / "run_metadata.json",
-            {
-                "run_id": self.config.run_id,
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "mode": self.config.mode,
-                "tasks": self.config.tasks,
-                "trainers": self.config.trainers,
-                "llm": self.config.llm,
-            },
-        )
-        write_env(self.artifacts.run_dir / "env.txt", extra_keys=["TRACE_MODE", "TRACE_LITELLM_MODEL"])
-        write_text(self.artifacts.run_dir / "mlflow_link.txt", "")
-        write_text(self.artifacts.run_dir / "stdout.log", "")
-        write_text(self.artifacts.run_dir / "stderr.log", "")
+    def run(self) -> RunSummary:
+        self.artifacts = init_run_dir(self.config.runs_dir, self.config.run_id)
+        write_config_snapshot(self.artifacts.config_snapshot, self.config.snapshot())
+        write_env_json(self.artifacts.env_json)
 
-    def stop(self) -> None:
-        return None
+        tasks = _normalize_tasks(self.config.tasks, self.config.eval_kwargs)
+        trainers = self.config.trainers or ["PrioritySearch"]
 
-    def run_task(self, task_key: str, trainer_key: str) -> Dict[str, Any]:
-        if self.artifacts is None:
-            self.start()
-        assert self.artifacts is not None
-
-        problem = load_trace_problem(task_key, Path("LLM4AD") / "benchmark_tasks", eval_kwargs=self.config.timeouts)
-        dry_run = self.config.mode == "stub" and self.config.llm.get("provider") == "stub"
-        trainer = get_trainer(
-            trainer_key,
-            dry_run=dry_run,
-            trainer_overrides={"threads": self.config.threads, **self.config.timeouts},
-        )
-        result = trainer.train_step(problem)
-
-        metrics_row = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "task": task_key,
-            "trainer": trainer_key,
-            "status": result.get("status"),
-            "score": result.get("score"),
-            "elapsed": result.get("elapsed"),
-        }
-        append_metrics(
-            self.artifacts.artifacts_dir / "metrics.csv",
-            ["timestamp", "task", "trainer", "status", "score", "elapsed"],
-            metrics_row,
-        )
-        append_summary(self.artifacts.artifacts_dir / "summary.jsonl", metrics_row)
-        return metrics_row
-
-    def run_matrix(self) -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
-        for task_key in self.config.tasks:
-            for trainer_key in self.config.trainers:
-                results.append(self.run_task(task_key, trainer_key))
-        return results
+        for task in tasks:
+            for trainer in trainers:
+                results.append(self._run_task(task, trainer))
+
+        write_summary(self.artifacts.summary_json, {"run_id": self.config.run_id, "results": results})
+        return RunSummary(run_id=self.config.run_id, results=results)
+
+    def _run_task(self, task: Dict[str, Any], trainer_name: str) -> Dict[str, Any]:
+        assert self.artifacts is not None
+        task_key = task["key"]
+        eval_kwargs = task.get("eval_kwargs", {})
+        bundle = load_task_bundle(task_key, self.tasks_root, eval_kwargs=eval_kwargs)
+
+        start = datetime.utcnow().isoformat() + "Z"
+        if self.config.mode == "stub":
+            train_result = {"status": "skipped"}
+        else:
+            train_result = _train_bundle(bundle, trainer_name, self.config.trainer_kwargs)
+
+        eval_result = _evaluate_bundle(bundle)
+        row = {
+            "timestamp": start,
+            "task": task_key,
+            "trainer": trainer_name,
+            "status": train_result.get("status"),
+            "score": eval_result.get("score"),
+            "feedback": eval_result.get("feedback"),
+        }
+        append_results_csv(
+            self.artifacts.results_csv,
+            ["timestamp", "task", "trainer", "status", "score", "feedback"],
+            row,
+        )
+        append_event(self.artifacts.events_jsonl, row)
+        return row
 
 
-__all__ = ["Runner"]
+__all__ = ["BenchRunner", "RunSummary"]
