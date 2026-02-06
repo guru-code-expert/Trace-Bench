@@ -46,7 +46,7 @@ class RunConfig:
     mode: str = "stub"
     seed: int = 123
     tasks: List[Any] = field(default_factory=list)
-    trainers: List[str] = field(default_factory=list)
+    trainers: List[Any] = field(default_factory=list)
     eval_kwargs: Dict[str, Any] = field(default_factory=dict)
     trainer_kwargs: Dict[str, Any] = field(default_factory=dict)
 

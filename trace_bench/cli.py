@@ -32,8 +32,10 @@ def cmd_validate(config_path: str, root: str) -> int:
     return 1 if errors else 0
 
 
-def cmd_run(config_path: str, root: str) -> int:
+def cmd_run(config_path: str, root: str, runs_dir: str | None = None) -> int:
     cfg = load_config(config_path)
+    if runs_dir:
+        cfg.runs_dir = runs_dir
     runner = BenchRunner(cfg, tasks_root=root)
     runner.run()
     return 0
@@ -57,6 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_p = sub.add_parser("run", help="Run a benchmark config")
     run_p.add_argument("--config", required=True)
     run_p.add_argument("--root", default="LLM4AD/benchmark_tasks")
+    run_p.add_argument("--runs-dir", default=None)
 
     ui_p = sub.add_parser("ui", help="Launch Gradio UI (stub)")
     ui_p.add_argument("--runs-dir", default="runs")
@@ -73,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "validate":
         return cmd_validate(args.config, args.root)
     if args.cmd == "run":
-        return cmd_run(args.config, args.root)
+        return cmd_run(args.config, args.root, args.runs_dir)
     if args.cmd == "ui":
         return cmd_ui(args.runs_dir)
     return 1

@@ -8,6 +8,8 @@ import json
 import os
 import subprocess
 from datetime import datetime
+import platform
+import sys
 
 
 @dataclass
@@ -65,11 +67,51 @@ def _git_info() -> Dict[str, Any]:
         return info
 
 
+_ENV_ALLOWLIST = {
+    "TRACE_DEFAULT_LLM_BACKEND",
+    "TRACE_LITELLM_MODEL",
+    "TRACE_CUSTOMLLM_MODEL",
+    "TRACE_CUSTOMLLM_URL",
+    "CUDA_VISIBLE_DEVICES",
+    "PYTHONPATH",
+}
+
+_ENV_PREFIX_ALLOWLIST = (
+    "TRACE_",
+    "OPENAI_",
+    "ANTHROPIC_",
+    "AZURE_",
+    "HF_",
+    "HUGGINGFACE_",
+)
+
+_SENSITIVE_TOKENS = ("KEY", "TOKEN", "SECRET", "PASSWORD")
+
+
+def _is_allowed_env_key(key: str) -> bool:
+    if key in _ENV_ALLOWLIST:
+        return True
+    return any(key.startswith(prefix) for prefix in _ENV_PREFIX_ALLOWLIST)
+
+
+def _redact_env_value(key: str, value: str) -> str:
+    if any(token in key.upper() for token in _SENSITIVE_TOKENS):
+        return "***REDACTED***"
+    return value
+
+
 def write_env_json(path: Path) -> None:
-    env = {k: os.environ.get(k, "") for k in sorted(os.environ.keys())}
+    env: Dict[str, str] = {}
+    for key in sorted(os.environ.keys()):
+        if _is_allowed_env_key(key):
+            env[key] = _redact_env_value(key, os.environ.get(key, ""))
     payload = {
         "captured_at": datetime.utcnow().isoformat() + "Z",
         "env": env,
+        "runtime": {
+            "python_version": sys.version.split()[0],
+            "platform": platform.platform(),
+        },
         "git": _git_info(),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

@@ -49,6 +49,29 @@ def _normalize_tasks(tasks: List[Any], default_eval: Dict[str, Any]) -> List[Dic
     return normalized
 
 
+def _normalize_trainers(trainers: List[Any], default_params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    if not trainers:
+        trainers = ["PrioritySearch"]
+    for item in trainers:
+        if isinstance(item, str):
+            normalized.append({"name": item, "params": dict(default_params)})
+        elif isinstance(item, dict):
+            name = item.get("name") or item.get("trainer") or item.get("key")
+            if not name:
+                raise ValueError(f"Trainer entry missing name: {item}")
+            params = dict(default_params)
+            params.update(item.get("params") or item.get("trainer_kwargs") or {})
+            spec: Dict[str, Any] = {"name": name, "params": params}
+            for key in ("optimizer", "optimizer_kwargs", "guide", "guide_kwargs", "logger", "logger_kwargs"):
+                if key in item:
+                    spec[key] = item[key]
+            normalized.append(spec)
+        else:
+            raise ValueError(f"Unsupported trainer entry: {item}")
+    return normalized
+
+
 def _extract_response(model: Any, input_value: Any) -> Any:
     if isinstance(model, ParameterNode):
         return getattr(model, "data", model)
@@ -96,20 +119,54 @@ def _default_trainer_kwargs(algo_name: str) -> Dict[str, Any]:
     return dict(num_iters=1, num_search_iterations=1, train_batch_size=2, merge_every=2, pareto_subset_size=2)
 
 
-def _train_bundle(bundle: Dict[str, Any], algo_name: str, trainer_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def _train_bundle(bundle: Dict[str, Any], trainer_spec: Dict[str, Any], mode: str) -> Dict[str, Any]:
     from opto import trainer as opto_trainer
 
+    algo_name = trainer_spec["name"]
     algo = _resolve_algorithm(algo_name)
     kwargs = _default_trainer_kwargs(algo_name)
-    kwargs.update(trainer_kwargs)
+    kwargs.update(trainer_spec.get("params", {}))
+
+    optimizer = trainer_spec.get("optimizer")
+    guide = trainer_spec.get("guide") or bundle["guide"]
+    logger = trainer_spec.get("logger")
+    guide_kwargs = trainer_spec.get("guide_kwargs")
+    logger_kwargs = trainer_spec.get("logger_kwargs")
+
+    optimizer_kwargs = bundle.get("optimizer_kwargs", {})
+    override_opt_kwargs = trainer_spec.get("optimizer_kwargs")
+    if override_opt_kwargs:
+        optimizer_kwargs = override_opt_kwargs
+    if isinstance(optimizer_kwargs, dict):
+        optimizer_kwargs = dict(optimizer_kwargs)
+
+    if mode == "stub":
+        try:
+            from opto.utils.llm import DummyLLM
+
+            def _dummy_response(*_args, **_kwargs):
+                return '{"suggestion": {}}'
+
+            dummy = DummyLLM(_dummy_response)
+            if isinstance(optimizer_kwargs, list):
+                for item in optimizer_kwargs:
+                    item.setdefault("llm", dummy)
+            elif isinstance(optimizer_kwargs, dict):
+                optimizer_kwargs.setdefault("llm", dummy)
+        except Exception:
+            pass
 
     try:
         opto_trainer.train(
             model=bundle["param"],
             train_dataset=bundle["train_dataset"],
             algorithm=algo,
-            guide=bundle["guide"],
-            optimizer_kwargs=bundle.get("optimizer_kwargs", {}),
+            guide=guide,
+            optimizer=optimizer,
+            logger=logger,
+            optimizer_kwargs=optimizer_kwargs,
+            guide_kwargs=guide_kwargs,
+            logger_kwargs=logger_kwargs,
             **kwargs,
         )
         return {"status": "trained"}
@@ -131,7 +188,7 @@ class BenchRunner:
         write_env_json(self.artifacts.env_json)
 
         tasks = _normalize_tasks(self.config.tasks, self.config.eval_kwargs)
-        trainers = self.config.trainers or ["PrioritySearch"]
+        trainers = _normalize_trainers(self.config.trainers, self.config.trainer_kwargs)
 
         results: List[Dict[str, Any]] = []
         for task in tasks:
@@ -141,23 +198,20 @@ class BenchRunner:
         write_summary(self.artifacts.summary_json, {"run_id": self.config.run_id, "results": results})
         return RunSummary(run_id=self.config.run_id, results=results)
 
-    def _run_task(self, task: Dict[str, Any], trainer_name: str) -> Dict[str, Any]:
+    def _run_task(self, task: Dict[str, Any], trainer_spec: Dict[str, Any]) -> Dict[str, Any]:
         assert self.artifacts is not None
         task_key = task["key"]
         eval_kwargs = task.get("eval_kwargs", {})
         bundle = load_task_bundle(task_key, self.tasks_root, eval_kwargs=eval_kwargs)
 
         start = datetime.utcnow().isoformat() + "Z"
-        if self.config.mode == "stub":
-            train_result = {"status": "skipped"}
-        else:
-            train_result = _train_bundle(bundle, trainer_name, self.config.trainer_kwargs)
+        train_result = _train_bundle(bundle, trainer_spec, self.config.mode)
 
         eval_result = _evaluate_bundle(bundle)
         row = {
             "timestamp": start,
             "task": task_key,
-            "trainer": trainer_name,
+            "trainer": trainer_spec.get("name"),
             "status": train_result.get("status"),
             "score": eval_result.get("score"),
             "feedback": eval_result.get("feedback"),
