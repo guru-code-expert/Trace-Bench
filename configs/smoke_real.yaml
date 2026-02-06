@@ -1,6 +1,6 @@
 run_id:
 runs_dir: runs
-mode: stub
+mode: real
 seed: 123
 
 tasks:

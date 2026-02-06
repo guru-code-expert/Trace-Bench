@@ -57,6 +57,22 @@ def _normalize_trainers(trainers: List[Any], default_params: Dict[str, Any]) -> 
         if isinstance(item, str):
             normalized.append({"name": item, "params": dict(default_params)})
         elif isinstance(item, dict):
+            allowed_keys = {
+                "name",
+                "trainer",
+                "key",
+                "params",
+                "trainer_kwargs",
+                "optimizer",
+                "optimizer_kwargs",
+                "guide",
+                "guide_kwargs",
+                "logger",
+                "logger_kwargs",
+            }
+            unknown = sorted(set(item.keys()) - allowed_keys)
+            if unknown:
+                raise ValueError(f"Trainer entry has unknown keys: {unknown}")
             name = item.get("name") or item.get("trainer") or item.get("key")
             if not name:
                 raise ValueError(f"Trainer entry missing name: {item}")

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 import importlib
 import importlib.util
 import json
@@ -78,11 +78,34 @@ def discover_examples() -> List[TaskSpec]:
         TaskSpec(key="example:train_single_node_stub", source="example", module="train_single_node_stub"),
     ]
 
+def discover_veribench() -> List[TaskSpec]:
+    raise NotImplementedError("VeriBench tasks not yet wired: awaiting Trace team entrypoint/task list.")
 
-def discover_tasks(tasks_root: str | Path) -> List[TaskSpec]:
+
+def _parse_bench(bench: Optional[str]) -> Set[str]:
+    if not bench:
+        return {"llm4ad", "examples"}
+    normalized = bench.replace("+", ",")
+    parts = [p.strip() for p in normalized.split(",") if p.strip()]
+    if not parts:
+        return {"llm4ad", "examples"}
+    allowed = {"llm4ad", "examples", "veribench"}
+    unknown = [p for p in parts if p not in allowed]
+    if unknown:
+        raise ValueError(f"Unknown bench selector(s): {unknown}. Allowed: {sorted(allowed)}")
+    return set(parts)
+
+
+def discover_tasks(tasks_root: str | Path, bench: Optional[str] = None) -> List[TaskSpec]:
     root = Path(tasks_root)
-    specs = discover_llm4ad(root)
-    specs.extend(discover_examples())
+    selected = _parse_bench(bench)
+    specs: List[TaskSpec] = []
+    if "llm4ad" in selected:
+        specs.extend(discover_llm4ad(root))
+    if "examples" in selected:
+        specs.extend(discover_examples())
+    if "veribench" in selected:
+        specs.extend(discover_veribench())
     return specs
 
 
@@ -92,6 +115,8 @@ def load_task_module(task_key: str, tasks_root: str | Path):
     if task_key.startswith("example:"):
         module_name = task_key.split(":", 1)[1]
         return importlib.import_module(f"trace_bench.examples.{module_name}")
+    if task_key.startswith("veribench:"):
+        raise NotImplementedError("VeriBench tasks not yet wired: awaiting Trace team entrypoint/task list.")
 
     ensure_llm4ad_importable(root)
     mapping = {spec.key: spec.module for spec in discover_llm4ad(root)}
@@ -111,6 +136,8 @@ def load_task_module(task_key: str, tasks_root: str | Path):
 
 
 def load_task_bundle(task_key: str, tasks_root: str | Path, eval_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if task_key.startswith("veribench:"):
+        raise NotImplementedError("VeriBench tasks not yet wired: awaiting Trace team entrypoint/task list.")
     mod = load_task_module(task_key, tasks_root)
     if not hasattr(mod, "build_trace_problem"):
         raise AttributeError(f"Task module {task_key} missing build_trace_problem")
@@ -125,6 +152,7 @@ def load_task_bundle(task_key: str, tasks_root: str | Path, eval_kwargs: Optiona
 __all__ = [
     "TaskSpec",
     "discover_tasks",
+    "discover_veribench",
     "load_task_bundle",
     "load_task_module",
 ]

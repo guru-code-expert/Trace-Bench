@@ -5,3 +5,6 @@ external/*
 **/uv.lock
 *.egg-info/
 **/.venv/
+.env
+runs/
+runs_test/

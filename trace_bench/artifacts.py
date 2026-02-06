@@ -36,10 +36,15 @@ class RunArtifacts:
     def summary_json(self) -> Path:
         return self.run_dir / "summary.json"
 
+    @property
+    def tb_dir(self) -> Path:
+        return self.run_dir / "tb"
+
 
 def init_run_dir(runs_dir: str, run_id: str) -> RunArtifacts:
     run_path = Path(runs_dir) / run_id
     run_path.mkdir(parents=True, exist_ok=True)
+    (run_path / "tb").mkdir(parents=True, exist_ok=True)
     return RunArtifacts(run_path)
 
 
