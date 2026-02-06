@@ -133,6 +133,7 @@ runs/<run_id>/
   results.csv
   events.jsonl
   summary.json
+  tb/                  # TensorBoard logdir (wired in M3; created early for stability)
 ```
 
 **Security requirement**
@@ -174,6 +175,7 @@ runs/<run_id>/
 **OpenTrace examples smoke test**
 - Import every `.py` under `OpenTrace/examples/`.
 - For argparse scripts: `python <script> --help`.
+- Smoke runs set `TRACE_BENCH_SMOKE=1`; examples should early-exit under this flag to avoid heavy top-level execution.
 
 ## 9) Notebook Plan (Colab)
 
