@@ -83,21 +83,30 @@ def _resolve_algorithm(name: str):
 def _default_trainer_kwargs(algo_name: str) -> Dict[str, Any]:
     if algo_name == "PrioritySearch":
         return dict(num_epochs=1, num_steps=1, num_batches=1, num_candidates=2, num_proposals=2)
-    return dict(num_iters=1, num_search_iterations=1, train_batch_size=2, merge_every=2, pareto_subset_size=2)
+    if algo_name == "GEPA-Base":
+        return dict(num_iters=1, train_batch_size=2, merge_every=2, pareto_subset_size=2)
+    # GEPA-UCB and GEPA-Beam use num_search_iterations
+    return dict(num_search_iterations=1, train_batch_size=2, merge_every=2, pareto_subset_size=2)
 
 
-# Map config alias names → actual opto.trainer.train() parameter names
-_PARAM_ALIAS_MAP: Dict[str, str] = {
-    "ps_steps": "num_steps",
-    "ps_batches": "num_batches",
-    "ps_candidates": "num_candidates",
-    "ps_proposals": "num_proposals",
-    "ps_mem_update": "mem_update",
-    "gepa_iters": "num_iters",
-    "gepa_train_bs": "train_batch_size",
-    "gepa_merge_every": "merge_every",
-    "gepa_pareto_subset": "pareto_subset_size",
-}
+def _param_alias_map(algo_name: str) -> Dict[str, str]:
+    """Return config-alias → opto-kwarg mapping for the given algorithm."""
+    base = {
+        "ps_steps": "num_steps",
+        "ps_batches": "num_batches",
+        "ps_candidates": "num_candidates",
+        "ps_proposals": "num_proposals",
+        "ps_mem_update": "memory_update_frequency",
+        "gepa_train_bs": "train_batch_size",
+        "gepa_merge_every": "merge_every",
+        "gepa_pareto_subset": "pareto_subset_size",
+    }
+    if algo_name == "GEPA-Base":
+        base["gepa_iters"] = "num_iters"
+    else:
+        base["gepa_iters"] = "num_search_iterations"
+    return base
+
 
 # Keys that should NOT be passed to opto_trainer.train()
 _FILTERED_KWARGS = {"eval_kwargs", "optimizer_kwargs", "threads"}
@@ -106,10 +115,11 @@ _FILTERED_KWARGS = {"eval_kwargs", "optimizer_kwargs", "threads"}
 def _resolve_train_kwargs(params: Dict[str, Any], algo_name: str) -> Dict[str, Any]:
     """Map config aliases to actual train() kwargs and filter non-train keys."""
     kwargs = _default_trainer_kwargs(algo_name)
+    alias_map = _param_alias_map(algo_name)
     for key, value in params.items():
         if key in _FILTERED_KWARGS:
             continue
-        mapped_key = _PARAM_ALIAS_MAP.get(key, key)
+        mapped_key = alias_map.get(key, key)
         kwargs[mapped_key] = value
     return kwargs
 
