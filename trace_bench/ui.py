@@ -32,9 +32,9 @@ def launch_ui(runs_dir: str) -> int:
 
     def load_run(run_id: str):
         run_path = runs_root / run_id
-        config_text = _read_text(run_path / "config.snapshot.yaml")
+        config_text = _read_text(run_path / "meta" / "config.snapshot.yaml")
         results = _read_csv(run_path / "results.csv")
-        env_text = _read_text(run_path / "env.json")
+        env_text = _read_text(run_path / "meta" / "env.json")
         return config_text, results, env_text
 
     with gr.Blocks() as demo:

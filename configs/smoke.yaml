@@ -1,10 +1,12 @@
-run_id:
 runs_dir: runs
 mode: stub
-seed: 123
+seeds: [123]
 
 tasks:
-  - example:greeting_stub
+  - id: internal:numeric_param
 
 trainers:
-  - PrioritySearch
+  - id: PrioritySearch
+    params_variants:
+      - ps_steps: 1
+        ps_batches: 1

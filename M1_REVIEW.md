@@ -1,16 +1,20 @@
-# M1 Review Checklist (Runner + Standardized Outputs)
+# M1 Review Checklist (Runner + Canonical Artifacts)
 
 ## Acceptance Commands (run in order)
 
 ```bash
-# List tasks (LLM4AD + examples)
+# List tasks (all benches) + trainers
 trace-bench list-tasks --root LLM4AD/benchmark_tasks
+trace-bench list-trainers
 
-# Validate smoke config
-trace-bench validate --config configs/smoke.yaml
+# Validate M1 config (strict)
+trace-bench validate --config configs/m1_validation.yaml --strict
 
-# Stub smoke (deterministic, no keys)
-trace-bench run --config configs/smoke.yaml --runs-dir runs
+# Run M1 validation (stub by default)
+trace-bench run --config configs/m1_validation.yaml --runs-dir runs
+
+# Bounded 2x2 matrix smoke (4 jobs)
+trace-bench run --config configs/m1_matrix_smoke.yaml --runs-dir runs
 
 # Real smoke (requires OPENAI_API_KEY)
 trace-bench run --config configs/smoke_real.yaml --runs-dir runs
@@ -19,16 +23,27 @@ trace-bench run --config configs/smoke_real.yaml --runs-dir runs
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
 ```
 
+## Notebook
+
+- `notebooks/01_m1_minimal_api.ipynb` (Open in Colab badge inside)
+
 ## Expected Artifacts
 
 ```
 runs/<run_id>/
-  config.snapshot.yaml
-  env.json              # allowlist + redaction
+  meta/
+    config.snapshot.yaml
+    env.json              # allowlist + redaction
+    git.json
+    manifest.json
+  jobs/<job_id>/
+    job_meta.json
+    results.json
+    events.jsonl
+    artifacts/
+    tb/
   results.csv
-  events.jsonl
   summary.json
-  tb/
 ```
 
 ## Dependencies (Required for Full Pass)
@@ -46,7 +61,7 @@ OpenTrace examples strict smoke (for 100% pass):
 
 Run strict smoke once optional deps are installed:
 ```bash
-TRACE_BENCH_STRICT_EXAMPLES=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
+TRACE_BENCH_STRICT_EXAMPLES=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q tests/m1/test_opentrace_examples_smoke.py
 ```
 
 ## Pending Inputs (Explicit)

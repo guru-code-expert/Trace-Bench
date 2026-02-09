@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 import csv
 import json
 import os
@@ -15,37 +15,74 @@ import sys
 @dataclass
 class RunArtifacts:
     run_dir: Path
+    meta_dir: Path
+    jobs_dir: Path
 
     @property
     def config_snapshot(self) -> Path:
-        return self.run_dir / "config.snapshot.yaml"
+        return self.meta_dir / "config.snapshot.yaml"
 
     @property
     def env_json(self) -> Path:
-        return self.run_dir / "env.json"
+        return self.meta_dir / "env.json"
+
+    @property
+    def git_json(self) -> Path:
+        return self.meta_dir / "git.json"
+
+    @property
+    def manifest_json(self) -> Path:
+        return self.meta_dir / "manifest.json"
 
     @property
     def results_csv(self) -> Path:
         return self.run_dir / "results.csv"
 
     @property
-    def events_jsonl(self) -> Path:
-        return self.run_dir / "events.jsonl"
-
-    @property
     def summary_json(self) -> Path:
         return self.run_dir / "summary.json"
 
+
+@dataclass
+class JobArtifacts:
+    job_dir: Path
+
+    @property
+    def job_meta(self) -> Path:
+        return self.job_dir / "job_meta.json"
+
+    @property
+    def results_json(self) -> Path:
+        return self.job_dir / "results.json"
+
+    @property
+    def events_jsonl(self) -> Path:
+        return self.job_dir / "events.jsonl"
+
+    @property
+    def artifacts_dir(self) -> Path:
+        return self.job_dir / "artifacts"
+
     @property
     def tb_dir(self) -> Path:
-        return self.run_dir / "tb"
+        return self.job_dir / "tb"
 
 
 def init_run_dir(runs_dir: str, run_id: str) -> RunArtifacts:
     run_path = Path(runs_dir) / run_id
-    run_path.mkdir(parents=True, exist_ok=True)
-    (run_path / "tb").mkdir(parents=True, exist_ok=True)
-    return RunArtifacts(run_path)
+    meta_dir = run_path / "meta"
+    jobs_dir = run_path / "jobs"
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    jobs_dir.mkdir(parents=True, exist_ok=True)
+    return RunArtifacts(run_dir=run_path, meta_dir=meta_dir, jobs_dir=jobs_dir)
+
+
+def init_job_dir(run_artifacts: RunArtifacts, job_id: str) -> JobArtifacts:
+    job_dir = run_artifacts.jobs_dir / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+    (job_dir / "tb").mkdir(parents=True, exist_ok=True)
+    return JobArtifacts(job_dir=job_dir)
 
 
 def _dump_yaml_or_json(data: Dict[str, Any]) -> str:
@@ -117,9 +154,27 @@ def write_env_json(path: Path) -> None:
             "python_version": sys.version.split()[0],
             "platform": platform.platform(),
         },
-        "git": _git_info(),
     }
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def write_git_json(path: Path) -> None:
+    path.write_text(json.dumps(_git_info(), indent=2), encoding="utf-8")
+
+def _dump_json(payload: Dict[str, Any]) -> str:
+    return json.dumps(payload, indent=2, default=str)
+
+
+def write_manifest(path: Path, manifest: Dict[str, Any]) -> None:
+    path.write_text(_dump_json(manifest), encoding="utf-8")
+
+
+def write_job_meta(path: Path, job_meta: Dict[str, Any]) -> None:
+    path.write_text(_dump_json(job_meta), encoding="utf-8")
+
+
+def write_job_results(path: Path, results: Dict[str, Any]) -> None:
+    path.write_text(_dump_json(results), encoding="utf-8")
 
 
 def append_results_csv(path: Path, fieldnames: List[str], row: Dict[str, Any]) -> None:
@@ -137,14 +192,20 @@ def append_event(path: Path, event: Dict[str, Any]) -> None:
 
 
 def write_summary(path: Path, summary: Dict[str, Any]) -> None:
-    path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    path.write_text(_dump_json(summary), encoding="utf-8")
 
 
 __all__ = [
     "RunArtifacts",
+    "JobArtifacts",
     "init_run_dir",
+    "init_job_dir",
     "write_config_snapshot",
     "write_env_json",
+    "write_git_json",
+    "write_manifest",
+    "write_job_meta",
+    "write_job_results",
     "append_results_csv",
     "append_event",
     "write_summary",

@@ -8,3 +8,4 @@ external/*
 .env
 runs/
 runs_test/
+notebooks/01_smoke_runner_with_output.ipynb

@@ -11,10 +11,24 @@ import sys
 
 @dataclass
 class TaskSpec:
-    key: str
-    source: str
+    id: str
+    suite: str
     module: str
 
+
+@dataclass
+class TrainerSpec:
+    id: str
+    source: str
+    available: bool
+
+
+_INTERNAL_TASKS = {
+    "internal:code_param": "internal_code_param",
+    "internal:numeric_param": "internal_numeric_param",
+    "internal:multi_param": "internal_multi_param",
+    "internal:non_trainable": "internal_non_trainable",
+}
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
@@ -63,33 +77,60 @@ def discover_llm4ad(tasks_root: Path) -> List[TaskSpec]:
             key = entry.get("key")
             module = entry.get("module") or entry.get("wrapper")
             if key and module:
-                specs.append(TaskSpec(key=key, source="llm4ad", module=module))
+                specs.append(TaskSpec(id=f"llm4ad:{key}", suite="llm4ad", module=module))
         return specs
     # fallback: directories
     for path in tasks_root.iterdir():
         if path.is_dir():
-            specs.append(TaskSpec(key=path.name, source="llm4ad", module=path.name))
+            specs.append(TaskSpec(id=f"llm4ad:{path.name}", suite="llm4ad", module=path.name))
     return specs
 
 
-def discover_examples() -> List[TaskSpec]:
+def discover_trace_examples() -> List[TaskSpec]:
     return [
-        TaskSpec(key="example:greeting_stub", source="example", module="greeting_stub"),
-        TaskSpec(key="example:train_single_node_stub", source="example", module="train_single_node_stub"),
+        TaskSpec(id="trace_examples:greeting_stub", suite="trace_examples", module="greeting_stub"),
+        TaskSpec(id="trace_examples:train_single_node_stub", suite="trace_examples", module="train_single_node_stub"),
+    ]
+
+
+def discover_internal() -> List[TaskSpec]:
+    return [
+        TaskSpec(id=task_id, suite="internal", module=module)
+        for task_id, module in _INTERNAL_TASKS.items()
     ]
 
 def discover_veribench() -> List[TaskSpec]:
     raise NotImplementedError("VeriBench tasks not yet wired: awaiting Trace team entrypoint/task list.")
 
 
+def discover_trainers() -> List[TrainerSpec]:
+    ensure_opto_importable()
+    candidates = [
+        ("PrioritySearch", "opto.features.priority_search", "PrioritySearch"),
+        ("GEPA-Base", "opto.features.gepa.gepa_algorithms", "GEPAAlgorithmBase"),
+        ("GEPA-UCB", "opto.features.gepa.gepa_algorithms", "GEPAUCBSearch"),
+        ("GEPA-Beam", "opto.features.gepa.gepa_algorithms", "GEPABeamPareto"),
+    ]
+    specs: List[TrainerSpec] = []
+    for trainer_id, module, symbol in candidates:
+        available = True
+        try:
+            mod = importlib.import_module(module)
+            getattr(mod, symbol)
+        except Exception:
+            available = False
+        specs.append(TrainerSpec(id=trainer_id, source=module, available=available))
+    return specs
+
+
 def _parse_bench(bench: Optional[str]) -> Set[str]:
     if not bench:
-        return {"llm4ad", "examples"}
+        return {"llm4ad", "trace_examples", "internal"}
     normalized = bench.replace("+", ",")
     parts = [p.strip() for p in normalized.split(",") if p.strip()]
     if not parts:
-        return {"llm4ad", "examples"}
-    allowed = {"llm4ad", "examples", "veribench"}
+        return {"llm4ad", "trace_examples", "internal"}
+    allowed = {"llm4ad", "trace_examples", "internal", "veribench"}
     unknown = [p for p in parts if p not in allowed]
     if unknown:
         raise ValueError(f"Unknown bench selector(s): {unknown}. Allowed: {sorted(allowed)}")
@@ -102,24 +143,39 @@ def discover_tasks(tasks_root: str | Path, bench: Optional[str] = None) -> List[
     specs: List[TaskSpec] = []
     if "llm4ad" in selected:
         specs.extend(discover_llm4ad(root))
-    if "examples" in selected:
-        specs.extend(discover_examples())
+    if "trace_examples" in selected:
+        specs.extend(discover_trace_examples())
+    if "internal" in selected:
+        specs.extend(discover_internal())
     if "veribench" in selected:
         specs.extend(discover_veribench())
     return specs
 
 
-def load_task_module(task_key: str, tasks_root: str | Path):
+def _normalize_task_id(task_id: str) -> str:
+    if task_id.startswith("example:"):
+        return task_id.replace("example:", "trace_examples:", 1)
+    if ":" in task_id:
+        return task_id
+    return f"llm4ad:{task_id}"
+
+
+def load_task_module(task_id: str, tasks_root: str | Path):
     ensure_opto_importable()
     root = Path(tasks_root)
-    if task_key.startswith("example:"):
-        module_name = task_key.split(":", 1)[1]
+    task_id = _normalize_task_id(task_id)
+    if task_id.startswith("trace_examples:"):
+        module_name = task_id.split(":", 1)[1]
         return importlib.import_module(f"trace_bench.examples.{module_name}")
-    if task_key.startswith("veribench:"):
+    if task_id.startswith("internal:"):
+        module_name = _INTERNAL_TASKS.get(task_id, task_id.split(":", 1)[1])
+        return importlib.import_module(f"trace_bench.examples.{module_name}")
+    if task_id.startswith("veribench:"):
         raise NotImplementedError("VeriBench tasks not yet wired: awaiting Trace team entrypoint/task list.")
 
     ensure_llm4ad_importable(root)
-    mapping = {spec.key: spec.module for spec in discover_llm4ad(root)}
+    mapping = {spec.id.split(":", 1)[1]: spec.module for spec in discover_llm4ad(root)}
+    task_key = task_id.split(":", 1)[1]
     module_dir = mapping.get(task_key, task_key)
     module_path = root / module_dir / "__init__.py"
     if not module_path.exists():
@@ -135,12 +191,13 @@ def load_task_module(task_key: str, tasks_root: str | Path):
     return mod
 
 
-def load_task_bundle(task_key: str, tasks_root: str | Path, eval_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    if task_key.startswith("veribench:"):
+def load_task_bundle(task_id: str, tasks_root: str | Path, eval_kwargs: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    task_id = _normalize_task_id(task_id)
+    if task_id.startswith("veribench:"):
         raise NotImplementedError("VeriBench tasks not yet wired: awaiting Trace team entrypoint/task list.")
-    mod = load_task_module(task_key, tasks_root)
+    mod = load_task_module(task_id, tasks_root)
     if not hasattr(mod, "build_trace_problem"):
-        raise AttributeError(f"Task module {task_key} missing build_trace_problem")
+        raise AttributeError(f"Task module {task_id} missing build_trace_problem")
     bundle = mod.build_trace_problem(**(eval_kwargs or {}))
     required = {"param", "guide", "train_dataset", "optimizer_kwargs", "metadata"}
     missing = required - set(bundle.keys())
@@ -151,7 +208,9 @@ def load_task_bundle(task_key: str, tasks_root: str | Path, eval_kwargs: Optiona
 
 __all__ = [
     "TaskSpec",
+    "TrainerSpec",
     "discover_tasks",
+    "discover_trainers",
     "discover_veribench",
     "load_task_bundle",
     "load_task_module",
