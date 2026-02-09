@@ -9,6 +9,7 @@ tasks:
   - id: internal:numeric_param
   - id: internal:multi_param
   - id: internal:non_trainable
+  - id: trace_examples:greeting_stub
   - id: llm4ad:circle_packing
     eval_kwargs:
       timeout_seconds: 10
