@@ -35,5 +35,21 @@ trainers:
     optimizer: OPROv2
     optimizer_kwargs: {}
 
+  - id: GEPA-UCB
+    params_variants:
+      - threads: 2
+        gepa_iters: 1
+        gepa_train_bs: 2
+        gepa_merge_every: 2
+        gepa_pareto_subset: 2
+
+  - id: GEPA-Beam
+    params_variants:
+      - threads: 2
+        gepa_iters: 1
+        gepa_train_bs: 2
+        gepa_merge_every: 2
+        gepa_pareto_subset: 2
+
 eval_kwargs:
   timeout_seconds: 10

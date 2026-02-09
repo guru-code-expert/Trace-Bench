@@ -64,6 +64,9 @@ _ALLOWED_TRAINER_KWARGS = {
     "gepa_train_bs",
     "gepa_merge_every",
     "gepa_pareto_subset",
+    # LLM4AD pass-through knobs (merged into params_variants by config parser)
+    "optimizer_kwargs",
+    "eval_kwargs",
 }
 
 
