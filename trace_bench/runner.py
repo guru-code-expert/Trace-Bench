@@ -86,19 +86,46 @@ def _default_trainer_kwargs(algo_name: str) -> Dict[str, Any]:
     return dict(num_iters=1, num_search_iterations=1, train_batch_size=2, merge_every=2, pareto_subset_size=2)
 
 
+# Map config alias names → actual opto.trainer.train() parameter names
+_PARAM_ALIAS_MAP: Dict[str, str] = {
+    "ps_steps": "num_steps",
+    "ps_batches": "num_batches",
+    "ps_candidates": "num_candidates",
+    "ps_proposals": "num_proposals",
+    "ps_mem_update": "mem_update",
+    "gepa_iters": "num_iters",
+    "gepa_train_bs": "train_batch_size",
+    "gepa_merge_every": "merge_every",
+    "gepa_pareto_subset": "pareto_subset_size",
+}
+
+# Keys that should NOT be passed to opto_trainer.train()
+_FILTERED_KWARGS = {"eval_kwargs", "optimizer_kwargs", "threads"}
+
+
+def _resolve_train_kwargs(params: Dict[str, Any], algo_name: str) -> Dict[str, Any]:
+    """Map config aliases to actual train() kwargs and filter non-train keys."""
+    kwargs = _default_trainer_kwargs(algo_name)
+    for key, value in params.items():
+        if key in _FILTERED_KWARGS:
+            continue
+        mapped_key = _PARAM_ALIAS_MAP.get(key, key)
+        kwargs[mapped_key] = value
+    return kwargs
+
+
 def _train_bundle(bundle: Dict[str, Any], trainer_spec: TrainerConfig, params: Dict[str, Any], mode: str) -> Dict[str, Any]:
     from opto import trainer as opto_trainer
 
     algo_name = trainer_spec.id
     algo = _resolve_algorithm(algo_name)
-    kwargs = _default_trainer_kwargs(algo_name)
-    kwargs.update(params)
+    kwargs = _resolve_train_kwargs(params, algo_name)
 
     optimizer = trainer_spec.optimizer
     guide = trainer_spec.guide or bundle["guide"]
-    logger = trainer_spec.logger
-    guide_kwargs = trainer_spec.guide_kwargs or None
-    logger_kwargs = trainer_spec.logger_kwargs or None
+    logger = trainer_spec.logger or "ConsoleLogger"
+    guide_kwargs = trainer_spec.guide_kwargs or {}
+    logger_kwargs = trainer_spec.logger_kwargs or {}
 
     optimizer_kwargs = bundle.get("optimizer_kwargs", {})
     override_opt_kwargs = trainer_spec.optimizer_kwargs or None
@@ -235,9 +262,12 @@ class BenchRunner:
                 status = train_result.get("status", "ok")
                 resolved_optimizer_kwargs = train_result.get("optimizer_kwargs") or {}
                 resolved_trainer_kwargs = train_result.get("trainer_kwargs") or resolved_trainer_kwargs
+                if status == "failed":
+                    feedback = f"training_error: {train_result.get('error', 'unknown')}"
                 final = _evaluate_bundle(bundle)
                 score_final = final.get("score")
-                feedback = final.get("feedback") or feedback
+                if status != "failed":
+                    feedback = final.get("feedback") or feedback
 
                 if isinstance(score_initial, (int, float)) and isinstance(score_final, (int, float)):
                     score_best = max(score_initial, score_final)
