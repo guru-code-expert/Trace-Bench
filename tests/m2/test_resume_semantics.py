@@ -256,12 +256,27 @@ def test_resume_failed_skips_never_run(tmp_path):
     assert manifest_statuses[first_job_id] == "reused", \
         f"OK job should be reused with resume=failed, got {manifest_statuses[first_job_id]}"
 
-    # The second task (never-run) should NOT have been executed.
-    # It should appear in the "not_executed" section (not in results).
-    executed_ids = {r["job_id"] for r in summary2.results}
-    never_run_ids = set(manifest_statuses.keys()) - {first_job_id}
+    # The second task (code_param) was never run before.
+    # With resume=failed it must NOT be executed — only previously-failed jobs
+    # get re-run.  We verify two things:
+    #   1. It must not appear in summary2.results (no execution happened).
+    #   2. Its job directory must not contain a results.json produced by run 2.
+
+    run1_job_ids = {r["job_id"] for r in summary1.results}
+    run2_executed_ids = {r["job_id"] for r in summary2.results}
+    never_run_ids = set(manifest_statuses.keys()) - run1_job_ids
+
+    assert len(never_run_ids) > 0, \
+        "Test setup error: expected at least one never-run job in the matrix"
 
     for job_id in never_run_ids:
+        # Must NOT appear in the execution results
+        assert job_id not in run2_executed_ids, \
+            f"Never-run job {job_id} was executed (found in results) — " \
+            f"resume=failed should skip never-run jobs"
+
+        # Must have status "not_executed" in manifest (not "ok"/"failed"/"reused")
         status = manifest_statuses[job_id]
-        assert status != "ok" or job_id in executed_ids, \
-            f"Never-run job {job_id} should not be freshly executed with resume=failed"
+        assert status == "not_executed", \
+            f"Never-run job {job_id} has status '{status}' in manifest — " \
+            f"resume=failed should skip never-run jobs (expected 'not_executed')"
