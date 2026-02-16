@@ -85,8 +85,14 @@ def _resolve_symbol(module_name: str, symbol: str) -> bool:
 
 
 def _default_timeout(mode: str) -> float:
-    """Mode-based default timeout: stub=30s, real=600s (10min)."""
-    return 30.0 if mode == "stub" else 600.0
+    """Mode-based default timeout: stub=0 (in-process), real=600s (10min).
+
+    Stub mode uses DummyLLM which returns instantly, so subprocess
+    isolation adds pure overhead (each child re-imports the full
+    dependency tree).  Real mode talks to an LLM API that can hang,
+    so a 10-minute safety net is applied by default.
+    """
+    return 0.0 if mode == "stub" else 600.0
 
 
 def _validate_trainer_params(trainer, errors: list[str]) -> None:

@@ -4,7 +4,6 @@ mode: stub
 seeds: [123]
 max_workers: 4
 resume: auto
-job_timeout: 30
 
 trainers:
   - id: PrioritySearch

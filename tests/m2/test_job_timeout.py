@@ -78,8 +78,8 @@ def test_job_timeout_in_snapshot():
 
 
 def test_default_timeout_stub_mode():
-    """Default timeout for stub mode should be 30s."""
-    assert _default_timeout("stub") == 30.0
+    """Default timeout for stub mode should be 0 (in-process, no subprocess overhead)."""
+    assert _default_timeout("stub") == 0.0
 
 
 def test_default_timeout_real_mode():
