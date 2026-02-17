@@ -2,7 +2,7 @@
 # 65 tasks x 2 trainers x 1 seed = 130 jobs
 mode: stub
 seeds: [123]
-max_workers: 4
+max_workers: 1   # sequential — co_bench tasks download HF data, parallel OOMs on free Colab
 resume: auto
 
 trainers:
