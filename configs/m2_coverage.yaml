@@ -1,8 +1,12 @@
-# M2 Full LLM4AD Coverage
-# 65 tasks x 2 trainers x 1 seed = 130 jobs
+# M2 LLM4AD Coverage — Runner execution
+# Excludes co_bench tasks (they download from HuggingFace Hub at init,
+# each consuming 100MB-1GB RAM; free Colab OOMs even sequentially).
+# co_bench loadability is verified separately in the coverage-check cell.
+#
+# 29 tasks x 2 trainers x 1 seed = 58 jobs
 mode: stub
 seeds: [123]
-max_workers: 1   # sequential — co_bench tasks download HF data, parallel OOMs on free Colab
+max_workers: 2
 resume: auto
 
 trainers:
@@ -38,43 +42,6 @@ tasks:
   - id: "llm4ad:optimization/admissible_set"
   - id: "llm4ad:optimization/qap_construct"
   - id: "llm4ad:optimization/ovrp_construct"
-  # co_bench tasks
-  - id: "llm4ad:optimization/co_bench/open_shop_scheduling_co_bench"
-  - id: "llm4ad:optimization/co_bench/generalised_assignment_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/flow_shop_scheduling_co_bench"
-  - id: "llm4ad:optimization/co_bench/set_partitioning_co_bench"
-  - id: "llm4ad:optimization/co_bench/maximal_independent_set_co_bench"
-  - id: "llm4ad:optimization/co_bench/container_loading_co_bench"
-  - id: "llm4ad:optimization/co_bench/equitable_partitioning_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/p_median_uncapacitated_co_bench"
-  - id: "llm4ad:optimization/co_bench/crew_scheduling_co_bench"
-  - id: "llm4ad:optimization/co_bench/euclidean_steiner_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/unconstrained_guillotine_cutting_co_bench"
-  - id: "llm4ad:optimization/co_bench/packing_unequal_circles_co_bench"
-  - id: "llm4ad:optimization/co_bench/packing_unequal_rectangles_and_squares_area_co_bench"
-  - id: "llm4ad:optimization/co_bench/hybrid_reentrant_shop_scheduling_co_bench"
-  - id: "llm4ad:optimization/co_bench/travelling_salesman_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/uncapacitated_warehouse_location_co_bench"
-  - id: "llm4ad:optimization/co_bench/bp_1d_co_bench"
-  - id: "llm4ad:optimization/co_bench/job_shop_scheduling_co_bench"
-  - id: "llm4ad:optimization/co_bench/corporate_structuring_co_bench"
-  - id: "llm4ad:optimization/co_bench/assignment_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/packing_unequal_rectangles_and_squares_co_bench"
-  - id: "llm4ad:optimization/co_bench/assortment_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/set_covering_co_bench"
-  - id: "llm4ad:optimization/co_bench/p_median_capacitated_co_bench"
-  - id: "llm4ad:optimization/co_bench/multi_demand_multidimensional_knapsack_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/container_loading_with_weight_restrictions_co_bench"
-  - id: "llm4ad:optimization/co_bench/capacitated_warehouse_location_co_bench"
-  - id: "llm4ad:optimization/co_bench/common_due_date_scheduling_co_bench"
-  - id: "llm4ad:optimization/co_bench/constrained_guillotine_cutting_co_bench"
-  - id: "llm4ad:optimization/co_bench/packing_unequal_circles_area_co_bench"
-  - id: "llm4ad:optimization/co_bench/graph_colouring_co_bench"
-  - id: "llm4ad:optimization/co_bench/vehicle_routing_period_routing_co_bench"
-  - id: "llm4ad:optimization/co_bench/resource_constrained_shortest_path_co_bench"
-  - id: "llm4ad:optimization/co_bench/multidimensional_knapsack_problem_co_bench"
-  - id: "llm4ad:optimization/co_bench/aircraft_landing_co_bench"
-  - id: "llm4ad:optimization/co_bench/constrained_non_guillotine_cutting_co_bench"
   # science discovery
   - id: "llm4ad:science_discovery/bactgrow"
   - id: "llm4ad:science_discovery/stresstrain"
