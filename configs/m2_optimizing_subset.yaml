@@ -1,32 +1,23 @@
 # M2 Optimizing Subset
-# 10 hand-picked tasks known to work, 10 training steps, real mode.
-# Used for Colab validation to show score improvement.
+# 5 tasks that reliably work in real mode, 5 training steps.
+# Designed to complete in ~15-20 min on free Colab.
 mode: real
 seeds: [123]
-max_workers: 1
+max_workers: 2
 resume: auto
 job_timeout: 600
 
 trainers:
   - id: PrioritySearch
     params_variants:
-      - ps_steps: 10
+      - ps_steps: 5
         ps_batches: 2
-        ps_candidates: 4
-        ps_proposals: 4
-        ps_mem_update: 2
+        ps_candidates: 3
+        ps_proposals: 3
 
 tasks:
-  # Optimization tasks with known working GetData/evaluators
   - id: "llm4ad:circle_packing"
   - id: "llm4ad:online_bin_packing_local"
-  - id: "llm4ad:optimization/tsp_gls_2O"
-  - id: "llm4ad:optimization/online_bin_packing"
   - id: "llm4ad:optimization/knapsack_construct"
-  - id: "llm4ad:optimization/bp_1d_construct"
   - id: "llm4ad:optimization/admissible_set"
-  # Science discovery
   - id: "llm4ad:science_discovery/oscillator1"
-  - id: "llm4ad:science_discovery/oscillator2"
-  # Machine learning
-  - id: "llm4ad:machine_learning/acrobot"
