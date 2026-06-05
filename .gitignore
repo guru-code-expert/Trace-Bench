@@ -17,7 +17,5 @@ external/*
 /pytest_tmp_global
 /runs
 /.internal
-/.internal
 /.tmp_runs_run
-/.tmp_runs_run
-/.tmp_runs_run
+temp_interactive_push.bat
